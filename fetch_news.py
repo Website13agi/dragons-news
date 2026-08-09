@@ -3,13 +3,15 @@ import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
 import html
-
+import re
 
 OUTPUT = "articles.json"
 PEOPLE_FILE = "dragons_people.json"
 
+# ==========================================
+# Google News 検索
+# ==========================================
 
-# 中日スポーツからドラゴンズ記事を探すための検索
 SEARCH_QUERIES = [
     'site:chunichi.co.jp/chuspo ドラゴンズ',
     'site:chunichi.co.jp/chuspo "中日ドラゴンズ"',
@@ -19,6 +21,10 @@ SEARCH_QUERIES = [
     'site:chunichi.co.jp/chuspo "一軍" 中日',
 ]
 
+
+# ==========================================
+# Google News RSS取得
+# ==========================================
 
 def fetch_rss(query):
 
@@ -49,23 +55,59 @@ def fetch_rss(query):
         return response.read()
 
 
+# ==========================================
+# HTML文字列をきれいにする
+# ==========================================
+
 def clean_text(text):
 
     if not text:
         return ""
 
-    return html.unescape(text)
+    text = html.unescape(text)
 
+    # HTMLタグを除去
+    text = re.sub(
+        r"<[^>]+>",
+        " ",
+        text
+    )
+
+    # 余分な空白を整理
+    text = re.sub(
+        r"\s+",
+        " ",
+        text
+    )
+
+    return text.strip()
+
+
+# ==========================================
+# 選手・首脳陣を読み込む
+# ==========================================
 
 def load_people():
 
-    with open(
-        PEOPLE_FILE,
-        "r",
-        encoding="utf-8"
-    ) as file:
+    try:
 
-        data = json.load(file)
+        with open(
+            PEOPLE_FILE,
+            "r",
+            encoding="utf-8"
+        ) as file:
+
+            data = json.load(file)
+
+    except Exception as error:
+
+        print(
+            "人物ファイル読み込みエラー:",
+            error
+        )
+
+        return [], []
+
 
     players = data.get(
         "players",
@@ -80,6 +122,10 @@ def load_people():
     return players, coaches
 
 
+# ==========================================
+# ドラゴンズ記事判定
+# ==========================================
+
 def is_dragons_article(
     title,
     description,
@@ -93,11 +139,12 @@ def is_dragons_article(
         + description
     )
 
-    # ==================================
+    # ======================================
     # ① ドラゴンズ固有語
-    # ==================================
+    # ======================================
 
     strong_keywords = [
+
         "中日ドラゴンズ",
         "ドラゴンズ",
         "バンテリンドーム",
@@ -105,6 +152,7 @@ def is_dragons_article(
         "若竜",
         "竜戦士",
         "竜党",
+
     ]
 
     for keyword in strong_keywords:
@@ -114,31 +162,31 @@ def is_dragons_article(
             return True
 
 
-    # ==================================
+    # ======================================
     # ② 選手名
-    # ==================================
+    # ======================================
 
     for name in players:
 
-        if name in text:
+        if name and name in text:
 
             return True
 
 
-    # ==================================
+    # ======================================
     # ③ 監督・コーチ名
-    # ==================================
+    # ======================================
 
     for name in coaches:
 
-        if name in text:
+        if name and name in text:
 
             return True
 
 
-    # ==================================
-    # ④ 中日＋野球関連語
-    # ==================================
+    # ======================================
+    # ④ 「中日」＋野球関連語
+    # ======================================
 
     baseball_keywords = [
 
@@ -171,6 +219,7 @@ def is_dragons_article(
         "交流戦",
         "クライマックスシリーズ",
         "CS",
+
     ]
 
     has_baseball = any(
@@ -189,18 +238,91 @@ def is_dragons_article(
     return False
 
 
+# ==========================================
+# 中日スポーツ判定
+# ==========================================
+
+def is_chunichi_sports(
+    source,
+    source_url,
+    title,
+    description
+):
+
+    text = (
+        source
+        + " "
+        + source_url
+        + " "
+        + title
+        + " "
+        + description
+    )
+
+    # Google Newsのsource名
+    if "中日スポーツ" in source:
+        return True
+
+    # 英語表記など
+    if "Chunichi Sports" in source:
+        return True
+
+    # URLに中日スポーツのパスが含まれる場合
+    if "chunichi.co.jp/chuspo" in source_url:
+        return True
+
+    # 検索結果のタイトル・説明に
+    # 中日スポーツが明記されている場合
+    if "中日スポーツ" in text:
+        return True
+
+    return False
+
+
+# ==========================================
+# メイン処理
+# ==========================================
+
 def main():
 
     players, coaches = load_people()
 
+    print(
+        "選手:",
+        len(players),
+        "人"
+    )
+
+    print(
+        "首脳陣:",
+        len(coaches),
+        "人"
+    )
+
+
     articles = []
 
 
-    # ==================================
+    total_rss = 0
+    total_source = 0
+    total_dragons = 0
+
+
+    # ======================================
     # Google News RSSを複数検索
-    # ==================================
+    # ======================================
 
     for query in SEARCH_QUERIES:
+
+        print("")
+        print(
+            "======================================"
+        )
+
+        print(
+            "検索:",
+            query
+        )
 
         try:
 
@@ -218,13 +340,27 @@ def main():
             continue
 
 
+        items = root.findall(
+            ".//item"
+        )
+
+        print(
+            "RSS取得記事数:",
+            len(items)
+        )
+
+        total_rss += len(items)
+
+
+        query_source_count = 0
+        query_dragons_count = 0
+
+
         # ==================================
         # RSSの記事を処理
         # ==================================
 
-        for item in root.findall(
-            ".//item"
-        ):
+        for item in items:
 
             title = clean_text(
                 item.findtext(
@@ -233,15 +369,22 @@ def main():
                 )
             )
 
-            url = item.findtext(
-                "link",
-                ""
+
+            url = clean_text(
+                item.findtext(
+                    "link",
+                    ""
+                )
             )
 
-            date = item.findtext(
-                "pubDate",
-                ""
+
+            date = clean_text(
+                item.findtext(
+                    "pubDate",
+                    ""
+                )
             )
+
 
             description = clean_text(
                 item.findtext(
@@ -250,34 +393,54 @@ def main():
                 )
             )
 
+
+            # ------------------------------
+            # source
+            # ------------------------------
+
             source_element = item.find(
                 "source"
             )
 
             source = ""
+            source_url = ""
+
 
             if source_element is not None:
 
-                source = (
+                source = clean_text(
                     source_element.text
                     or ""
                 )
 
+                source_url = (
+                    source_element.attrib.get(
+                        "url",
+                        ""
+                    )
+                )
+
 
             # ==================================
-            # 中日スポーツだけを取得
+            # 中日スポーツ判定
             # ==================================
 
-            if (
-                "中日スポーツ"
-                not in source
+            if not is_chunichi_sports(
+                source,
+                source_url,
+                title,
+                description
             ):
 
                 continue
 
 
+            total_source += 1
+            query_source_count += 1
+
+
             # ==================================
-            # ドラゴンズ関連か判定
+            # ドラゴンズ記事判定
             # ==================================
 
             if not is_dragons_article(
@@ -290,8 +453,12 @@ def main():
                 continue
 
 
+            total_dragons += 1
+            query_dragons_count += 1
+
+
             # ==================================
-            # 記事を追加
+            # 記事追加
             # ==================================
 
             articles.append({
@@ -309,16 +476,35 @@ def main():
             })
 
 
-    # ==================================
+        print(
+            "中日スポーツ:",
+            query_source_count
+        )
+
+        print(
+            "ドラゴンズ記事:",
+            query_dragons_count
+        )
+
+
+    # ==========================================
     # URLで重複除去
-    # ==================================
+    # ==========================================
 
     unique_articles = {}
 
     for article in articles:
 
+        article_id = article.get(
+            "id",
+            ""
+        )
+
+        if not article_id:
+            continue
+
         unique_articles[
-            article["id"]
+            article_id
         ] = article
 
 
@@ -327,27 +513,30 @@ def main():
     )
 
 
-    # ==================================
+    # ==========================================
     # 新しい記事を上にする
-    # ==================================
+    # ==========================================
 
     articles.sort(
         key=lambda article:
-            article["date"],
+            article.get(
+                "date",
+                ""
+            ),
         reverse=True
     )
 
 
-    # ==================================
+    # ==========================================
     # 最大100記事
-    # ==================================
+    # ==========================================
 
     articles = articles[:100]
 
 
-    # ==================================
+    # ==========================================
     # articles.jsonに保存
-    # ==================================
+    # ==========================================
 
     with open(
         OUTPUT,
@@ -363,9 +552,43 @@ def main():
         )
 
 
+    # ==========================================
+    # 結果表示
+    # ==========================================
+
+    print("")
     print(
-        "取得したドラゴンズ記事:",
+        "======================================"
+    )
+
+    print(
+        "Google News取得記事:",
+        total_rss
+    )
+
+    print(
+        "中日スポーツ記事:",
+        total_source
+    )
+
+    print(
+        "ドラゴンズ関連記事:",
+        total_dragons
+    )
+
+    print(
+        "重複除去後:",
         len(articles)
+    )
+
+    print(
+        "articles.json:",
+        len(articles),
+        "記事"
+    )
+
+    print(
+        "======================================"
     )
 
 
