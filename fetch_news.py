@@ -2,12 +2,12 @@ import json
 import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+
 
 RSS_URL = (
     "https://news.google.com/rss/search?"
     + urllib.parse.urlencode({
-        "q": "site:chunichi.co.jp/chuspo ドラゴンズ",
+        "q": 'site:chunichi.co.jp/chuspo "ドラゴンズ"',
         "hl": "ja",
         "gl": "JP",
         "ceid": "JP:ja"
@@ -25,7 +25,10 @@ def fetch_rss():
         }
     )
 
-    with urllib.request.urlopen(request, timeout=30) as response:
+    with urllib.request.urlopen(
+        request,
+        timeout=30
+    ) as response:
         return response.read()
 
 
@@ -39,31 +42,45 @@ def main():
 
     for item in root.findall(".//item"):
 
-        title = item.findtext("title", "")
-        url = item.findtext("link", "")
-        date = item.findtext("pubDate", "")
+        title = item.findtext(
+            "title",
+            ""
+        )
 
-        source_element = item.find("source")
+        url = item.findtext(
+            "link",
+            ""
+        )
+
+        date = item.findtext(
+            "pubDate",
+            ""
+        )
+
+        source_element = item.find(
+            "source"
+        )
 
         source = ""
 
         if source_element is not None:
-            source = source_element.text or ""
+            source = (
+                source_element.text or ""
+            )
 
-        # 中日スポーツ以外を除外
-        if "中日スポーツ" not in source:
-            continue
-
-        # ドラゴンズ関連記事に限定
+        # タイトルにドラゴンズ関連語があるもの
         keywords = [
             "中日",
             "ドラゴンズ",
-            "ドラゴンズ",
             "竜",
-            "バンテリンドーム"
+            "バンテリンドーム",
+            "ナゴヤ球場"
         ]
 
-        if not any(keyword in title for keyword in keywords):
+        if not any(
+            keyword in title
+            for keyword in keywords
+        ):
             continue
 
         articles.append({
@@ -71,16 +88,28 @@ def main():
             "title": title,
             "date": date,
             "url": url,
-            "source": "中日スポーツ"
+            "source": source
         })
 
-    # 新しい記事を上にする
+    # 重複除去
+    unique = {}
+
+    for article in articles:
+        unique[
+            article["id"]
+        ] = article
+
+    articles = list(
+        unique.values()
+    )
+
+    # 新しい順
     articles.sort(
         key=lambda x: x["date"],
         reverse=True
     )
 
-    # 最大100記事
+    # 最大100件
     articles = articles[:100]
 
     with open(
