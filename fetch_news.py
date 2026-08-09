@@ -1,91 +1,151 @@
 import json
 import re
+import urllib.request
 from datetime import datetime, timedelta, timezone
-from urllib.parse import urljoin
-
-from playwright.sync_api import sync_playwright
-
+from html import unescape
 
 OUTPUT = "articles.json"
 
-BASE_URL = "https://www.chunichi.co.jp"
 NEWS_URL = "https://www.chunichi.co.jp/chuspo"
 
 JST = timezone(timedelta(hours=9))
 
 
+def fetch_page(url):
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": (
+                "Mozilla/5.0 "
+                "(Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 "
+                "(KHTML, like Gecko) "
+                "Chrome/131.0 Safari/537.36"
+            )
+        }
+    )
+
+    with urllib.request.urlopen(
+        req,
+        timeout=30
+    ) as response:
+        return response.read().decode(
+            "utf-8",
+            errors="ignore"
+        )
+
+
+def clean_text(text):
+    text = unescape(text)
+    text = re.sub(
+        r"<[^>]*>",
+        "",
+        text
+    )
+    text = re.sub(
+        r"\s+",
+        " ",
+        text
+    )
+    return text.strip()
+
+
 def parse_date(text):
-    """
-    ページ内の日付表記を解析
-    """
-
-    if not text:
-        return None
-
     patterns = [
-        r"2026[年/-]\s*(\d{1,2})[月/-]\s*(\d{1,2})日?\s+(\d{1,2}):(\d{2})",
-        r"(\d{4})[年/-]\s*(\d{1,2})[月/-]\s*(\d{1,2})日?\s+(\d{1,2}):(\d{2})",
+        r"2026年(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{2})",
+        r"2026/(\d{1,2})/(\d{1,2})\s*(\d{1,2}):(\d{2})",
+        r"2026-(\d{1,2})-(\d{1,2})\s*(\d{1,2}):(\d{2})",
     ]
 
     for pattern in patterns:
-
         match = re.search(
             pattern,
             text
         )
 
         if match:
-
-            groups = match.groups()
-
-            if len(groups) == 4:
-
-                year = 2026
-                month, day, hour, minute = map(
-                    int,
-                    groups
-                )
-
-            else:
-
-                year, month, day, hour, minute = map(
-                    int,
-                    groups
-                )
+            month, day, hour, minute = map(
+                int,
+                match.groups()
+            )
 
             try:
-
                 return datetime(
-                    year,
+                    2026,
                     month,
                     day,
                     hour,
                     minute,
                     tzinfo=JST
                 )
-
             except ValueError:
-
-                return None
+                pass
 
     return None
 
 
-def clean_title(title):
+def extract_articles(html):
 
-    if not title:
-        return ""
+    articles = []
 
-    title = re.sub(
-        r"\s+",
-        " ",
-        title
+    # /article/数字 のリンクをすべて取得
+    pattern = re.compile(
+        r'href=["\']([^"\']*/article/\d+)["\']'
+        r'[^>]*>(.*?)</a>',
+        re.S | re.I
     )
 
-    return title.strip()
+    for match in pattern.finditer(html):
+
+        url = match.group(1)
+        inner = match.group(2)
+
+        if url.startswith("/"):
+            url = "https://www.chunichi.co.jp" + url
+
+        title = clean_text(inner)
+
+        if not title:
+            continue
+
+        articles.append({
+            "url": url,
+            "title": title
+        })
+
+    return articles
 
 
 def main():
+
+    print("中日スポーツ取得開始")
+
+    try:
+        html = fetch_page(
+            NEWS_URL
+        )
+    except Exception as error:
+        print(
+            "ページ取得失敗:",
+            error
+        )
+
+        return
+
+    print(
+        "HTML取得:",
+        len(html),
+        "bytes"
+    )
+
+    candidates = extract_articles(
+        html
+    )
+
+    print(
+        "記事候補:",
+        len(candidates)
+    )
 
     now = datetime.now(JST)
 
@@ -94,320 +154,97 @@ def main():
         - timedelta(days=7)
     )
 
-
-    print(
-        "現在時刻:",
-        now.isoformat()
-    )
-
-    print(
-        "取得対象:",
-        one_week_ago.isoformat(),
-        "以降"
-    )
-
-
     articles = []
+    seen = set()
 
-    seen_urls = set()
+    for article in candidates:
 
+        url = article["url"]
 
-    with sync_playwright() as p:
+        if url in seen:
+            continue
 
-        browser = p.chromium.launch(
-            headless=True
+        seen.add(url)
+
+        title = article["title"]
+
+        # ----------------------------------
+        # ドラゴンズ関連判定
+        # ----------------------------------
+
+        keywords = [
+            "中日",
+            "ドラゴンズ",
+            "竜",
+            "バンテリンドーム",
+            "ナゴヤ球場",
+        ]
+
+        if not any(
+            keyword in title
+            for keyword in keywords
+        ):
+            continue
+
+        # ----------------------------------
+        # 周辺HTMLから日付を探す
+        # ----------------------------------
+
+        position = html.find(url)
+
+        if position == -1:
+            continue
+
+        surrounding = html[
+            max(0, position - 1500):
+            position + 1500
+        ]
+
+        article_date = parse_date(
+            surrounding
         )
 
-        page = browser.new_page(
-            locale="ja-JP"
-        )
-
-
-        print(
-            "中日スポーツを取得中..."
-        )
-
-
-        page.goto(
-            NEWS_URL,
-            wait_until="domcontentloaded",
-            timeout=60000
-        )
-
-
-        page.wait_for_timeout(
-            5000
-        )
-
-
-        # ==================================
-        # ページ内の全リンクを取得
-        # ==================================
-
-        links = page.locator(
-            "a"
-        ).all()
-
-
-        print(
-            "リンク数:",
-            len(links)
-        )
-
-
-        # ==================================
-        # 個別記事URLを探す
-        # ==================================
-
-        for link in links:
-
-            try:
-
-                href = link.get_attribute(
-                    "href"
-                )
-
-                title = link.inner_text()
-
-            except Exception:
-
-                continue
-
-
-            if not href:
-                continue
-
-
-            href = urljoin(
-                BASE_URL,
-                href
-            )
-
-
-            # --------------------------------
-            # 中日新聞社の個別記事だけ
-            # --------------------------------
-
-            if not re.search(
-                r"https://www\.chunichi\.co\.jp/article/\d+",
-                href
-            ):
-
-                continue
-
-
-            title = clean_title(
-                title
-            )
-
-
-            if not title:
-                continue
-
-
-            if href in seen_urls:
-                continue
-
-
-            seen_urls.add(
-                href
-            )
-
-
-            # ==================================
-            # 個別記事ページを開く
-            # ==================================
-
-            try:
-
-                article_page = (
-                    browser.new_page(
-                        locale="ja-JP"
-                    )
-                )
-
-
-                article_page.goto(
-                    href,
-                    wait_until="domcontentloaded",
-                    timeout=30000
-                )
-
-
-                article_page.wait_for_timeout(
-                    1000
-                )
-
-
-                # ------------------------------
-                # ページテキスト
-                # ------------------------------
-
-                body_text = (
-                    article_page
-                    .locator("body")
-                    .inner_text()
-                )
-
-
-                # ------------------------------
-                # タイトル
-                # ------------------------------
-
-                page_title = (
-                    article_page
-                    .title()
-                )
-
-
-                if page_title:
-
-                    page_title = clean_title(
-                        page_title
-                    )
-
-                    if page_title:
-                        title = page_title
-
-
-                # ------------------------------
-                # 日付
-                # ------------------------------
-
-                article_date = parse_date(
-                    body_text
-                )
-
-
-                article_page.close()
-
-
-            except Exception as error:
-
-                print(
-                    "記事取得エラー:",
-                    href,
-                    error
-                )
-
-                continue
-
-
-            # ==================================
-            # 日付が取得できなければ除外
-            # ==================================
-
-            if article_date is None:
-
-                continue
-
-
-            # ==================================
-            # 7日より古ければ除外
-            # ==================================
-
-            if article_date < one_week_ago:
-
-                continue
-
-
-            # ==================================
-            # 将来の日付も除外
-            # ==================================
-
-            if article_date > now:
-
-                continue
-
-
-            # ==================================
-            # ドラゴンズ記事判定
-            # ==================================
-
-            dragons_keywords = [
-
-                "中日",
-                "ドラゴンズ",
-                "井上",
-                "バンテリンドーム",
-                "ナゴヤ球場",
-                "柳裕也",
-                "細川成也",
-                "石川昂弥",
-                "福永裕基",
-                "岡林勇希",
-                "上林誠知",
-
-            ]
-
-
-            if not any(
-                keyword in (
-                    title
-                    + " "
-                    + body_text
-                )
-                for keyword in dragons_keywords
-            ):
-
-                continue
-
-
-            # ==================================
-            # 記事保存
-            # ==================================
-
-            articles.append({
-
-                "id": href,
-
-                "title": title,
-
-                "date":
-                    article_date.strftime(
-                        "%Y-%m-%d %H:%M:%S"
-                    ),
-
-                "url": href,
-
-                "source": "中日スポーツ"
-
-            })
-
-
-            print(
-                "取得:",
-                article_date.strftime(
-                    "%Y-%m-%d %H:%M"
-                ),
-                title
-            )
-
-
-        browser.close()
-
-
-    # ==========================================
-    # 新しい順
-    # ==========================================
+        if article_date is None:
+            continue
+
+        # ----------------------------------
+        # 7日以内
+        # ----------------------------------
+
+        if article_date < one_week_ago:
+            continue
+
+        if article_date > now:
+            continue
+
+        articles.append({
+            "id": url,
+            "title": title,
+            "date": article_date.strftime(
+                "%Y-%m-%d %H:%M:%S"
+            ),
+            "url": url,
+            "source": "中日スポーツ"
+        })
+
+    # --------------------------------------
+    # 最新順
+    # --------------------------------------
 
     articles.sort(
-        key=lambda article:
-            article["date"],
+        key=lambda x: x["date"],
         reverse=True
     )
 
-
-    # ==========================================
-    # 最大100記事
-    # ==========================================
+    # --------------------------------------
+    # 最大100件
+    # --------------------------------------
 
     articles = articles[:100]
 
-
-    # ==========================================
-    # JSON保存
-    # ==========================================
+    # --------------------------------------
+    # 保存
+    # --------------------------------------
 
     with open(
         OUTPUT,
@@ -422,22 +259,11 @@ def main():
             indent=2
         )
 
-
-    print("")
-    print(
-        "=============================="
-    )
-
     print(
         "保存記事数:",
         len(articles)
     )
 
-    print(
-        "=============================="
-    )
-
 
 if __name__ == "__main__":
-
     main()
