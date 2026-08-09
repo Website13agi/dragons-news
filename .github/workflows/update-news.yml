@@ -3,7 +3,7 @@ name: Update Dragons News
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 * * * *"
+    - cron: "*/15 * * * *"
 
 permissions:
   contents: write
