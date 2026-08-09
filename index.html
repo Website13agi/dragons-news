@@ -25,11 +25,13 @@ body {
   color: #222;
 }
 
-/* ヘッダー */
+/* =========================
+   ヘッダー
+========================= */
 
 header {
   background: #111;
-  color: white;
+  color: #fff;
   padding: 18px 20px;
 }
 
@@ -49,7 +51,9 @@ header p {
   font-size: 13px;
 }
 
-/* メイン */
+/* =========================
+   メイン
+========================= */
 
 main {
   max-width: 900px;
@@ -57,15 +61,17 @@ main {
   padding: 20px 15px;
 }
 
-/* 上部 */
+/* =========================
+   ツールバー
+========================= */
 
 .toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 10px;
-  margin-bottom: 15px;
   flex-wrap: wrap;
+  margin-bottom: 15px;
 }
 
 .count {
@@ -73,20 +79,19 @@ main {
   color: #555;
 }
 
-/* ボタン */
-
 .buttons {
   display: flex;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
 button {
   border: none;
   border-radius: 20px;
   padding: 8px 14px;
-  cursor: pointer;
   background: #ddd;
   color: #222;
+  cursor: pointer;
 }
 
 button.active {
@@ -98,12 +103,24 @@ button:hover {
   opacity: 0.8;
 }
 
-/* 記事 */
+/* =========================
+   更新時刻
+========================= */
+
+.updated {
+  font-size: 12px;
+  color: #888;
+  margin-bottom: 15px;
+}
+
+/* =========================
+   記事
+========================= */
 
 .article {
   display: block;
 
-  background: white;
+  background: #fff;
 
   border-radius: 10px;
 
@@ -151,7 +168,9 @@ button:hover {
   color: #999;
 }
 
-/* 新着マーク */
+/* =========================
+   未読マーク
+========================= */
 
 .new {
   display: inline-block;
@@ -169,15 +188,21 @@ button:hover {
   color: white;
 }
 
-/* 空 */
+/* =========================
+   状態表示
+========================= */
 
-.empty {
+.message {
   text-align: center;
+
   padding: 60px 10px;
+
   color: #777;
 }
 
-/* スマホ */
+/* =========================
+   スマホ
+========================= */
 
 @media (max-width: 600px) {
 
@@ -210,7 +235,9 @@ button:hover {
 
   <div class="header-inner">
 
-    <h1>Dragons News</h1>
+    <h1>
+      Dragons News
+    </h1>
 
     <p>
       中日ドラゴンズ ニュースリーダー
@@ -227,11 +254,11 @@ button:hover {
 
   <div class="toolbar">
 
-
     <div class="count">
 
-      <span id="unreadCount">0</span>
-      件の未読
+      未読
+      <strong id="unreadCount">0</strong>
+      件
 
     </div>
 
@@ -267,7 +294,7 @@ button:hover {
 
 
       <button
-        onclick="refreshArticles()">
+        onclick="loadArticles()">
 
         更新
 
@@ -275,12 +302,27 @@ button:hover {
 
     </div>
 
-
   </div>
 
 
 
-  <div id="articles"></div>
+  <div
+    id="updated"
+    class="updated">
+  </div>
+
+
+
+  <div
+    id="articles">
+
+    <div class="message">
+
+      記事を読み込んでいます……
+
+    </div>
+
+  </div>
 
 
 </main>
@@ -290,233 +332,306 @@ button:hover {
 <script>
 
 
-/*
-========================================
-記事データ
-========================================
+/* =========================
+   設定
+========================= */
 
-将来的にはここを自動取得に変更します。
-*/
-
-const articles = [
-
-  {
-    id: "sample-1",
-
-    title:
-      "中日ドラゴンズ関連記事をここに表示します",
-
-    date:
-      "2026-08-09 20:00",
-
-    url:
-      "https://www.chunichi.co.jp/chuspo",
-
-    source:
-      "中日スポーツ"
-  },
+const ARTICLE_FILE =
+  "articles.json";
 
 
-  {
-    id: "sample-2",
+/* =========================
+   データ
+========================= */
 
-    title:
-      "ここに最新記事が自動的に追加されます",
-
-    date:
-      "2026-08-09 18:00",
-
-    url:
-      "https://www.chunichi.co.jp/chuspo",
-
-    source:
-      "中日スポーツ"
-  },
-
-
-  {
-    id: "sample-3",
-
-    title:
-      "クリックすると元記事を開き、既読になります",
-
-    date:
-      "2026-08-09 15:00",
-
-    url:
-      "https://www.chunichi.co.jp/chuspo",
-
-    source:
-      "中日スポーツ"
-  }
-
-];
-
-
-
-/*
-========================================
-既読データ
-========================================
-*/
-
-let readArticles =
-  JSON.parse(
-    localStorage.getItem("dragonsReadArticles")
-    || "[]"
-  );
-
-
-
-/*
-========================================
-現在の表示
-========================================
-*/
+let articles = [];
 
 let currentFilter = "all";
 
 
+/* =========================
+   既読データ
+========================= */
 
-/*
-========================================
-記事表示
-========================================
-*/
+let readArticles =
+  JSON.parse(
+
+    localStorage.getItem(
+      "dragonsReadArticles"
+    ) || "[]"
+
+  );
+
+
+/* =========================
+   記事取得
+========================= */
+
+async function loadArticles() {
+
+  const container =
+    document.getElementById(
+      "articles"
+    );
+
+
+  container.innerHTML =
+    `
+      <div class="message">
+        記事を読み込んでいます……
+      </div>
+    `;
+
+
+  try {
+
+
+    const response =
+      await fetch(
+
+        ARTICLE_FILE +
+        "?t=" +
+        Date.now()
+
+      );
+
+
+    if (!response.ok) {
+
+      throw new Error(
+        "記事データを取得できませんでした"
+      );
+
+    }
+
+
+    articles =
+      await response.json();
+
+
+    /*
+    新しい順に並べる
+    */
+
+    articles.sort(
+
+      (a, b) =>
+        new Date(b.date) -
+        new Date(a.date)
+
+    );
+
+
+    renderArticles();
+
+
+    /*
+    更新時刻
+    */
+
+    const now =
+      new Date();
+
+
+    document.getElementById(
+      "updated"
+    ).textContent =
+
+      "最終更新：" +
+      now.toLocaleString(
+        "ja-JP"
+      );
+
+
+  } catch (error) {
+
+
+    console.error(error);
+
+
+    container.innerHTML =
+      `
+        <div class="message">
+
+          記事を取得できませんでした。<br>
+
+          しばらくしてから
+          「更新」を押してください。
+
+        </div>
+      `;
+
+  }
+
+}
+
+
+/* =========================
+   記事表示
+========================= */
 
 function renderArticles() {
 
+
   const container =
-    document.getElementById("articles");
+    document.getElementById(
+      "articles"
+    );
 
 
-  let filteredArticles =
-    articles.filter(article => {
+  let filtered =
+    articles.filter(
 
-      const isRead =
-        readArticles.includes(article.id);
+      article => {
+
+        const isRead =
+          readArticles.includes(
+            article.id
+          );
 
 
-      if (currentFilter === "read") {
+        if (
+          currentFilter === "read"
+        ) {
 
-        return isRead;
+          return isRead;
+
+        }
+
+
+        if (
+          currentFilter === "unread"
+        ) {
+
+          return !isRead;
+
+        }
+
+
+        return true;
 
       }
 
-
-      if (currentFilter === "unread") {
-
-        return !isRead;
-
-      }
-
-
-      return true;
-
-    });
+    );
 
 
   /*
   記事がない場合
   */
 
-  if (filteredArticles.length === 0) {
+  if (
+    filtered.length === 0
+  ) {
 
     container.innerHTML =
       `
-      <div class="empty">
+        <div class="message">
 
-        表示する記事がありません
+          表示する記事がありません
 
-      </div>
+        </div>
       `;
 
-    updateCount();
+    updateUnreadCount();
 
     return;
 
   }
 
 
-
   /*
-  記事を表示
+  記事表示
   */
 
   container.innerHTML =
-    filteredArticles.map(article => {
+
+    filtered.map(
+
+      article => {
 
 
-      const isRead =
-        readArticles.includes(article.id);
+        const isRead =
+          readArticles.includes(
+            article.id
+          );
 
 
-      return `
+        return `
 
-        <a
+          <a
 
-          class="article
-          ${isRead ? "read" : "unread"}"
+            class="article
+            ${isRead ? "read" : "unread"}"
 
-          href="${article.url}"
+            href="${escapeHtml(article.url)}"
 
-          target="_blank"
+            target="_blank"
 
-          rel="noopener noreferrer"
+            rel="noopener noreferrer"
 
-          onclick="markAsRead('${article.id}')"
+            onclick="markAsRead('${escapeHtml(article.id)}')"
 
-        >
+          >
 
-          <div class="article-title">
+            <div class="article-title">
 
-            ${escapeHtml(article.title)}
+              ${escapeHtml(
+                article.title
+              )}
 
-            ${
-              !isRead
-              ? '<span class="new">未読</span>'
-              : ''
-            }
+              ${
+                !isRead
+                ?
+                '<span class="new">未読</span>'
+                :
+                ''
+              }
 
-          </div>
-
-
-          <div class="article-meta">
-
-            ${escapeHtml(article.date)}
-
-          </div>
+            </div>
 
 
-          <div class="source">
+            <div class="article-meta">
 
-            ${escapeHtml(article.source)}
+              ${escapeHtml(
+                article.date || ""
+              )}
 
-          </div>
-
-        </a>
-
-      `;
-
-    }).join("");
+            </div>
 
 
-  updateCount();
+            <div class="source">
+
+              ${escapeHtml(
+                article.source ||
+                "中日スポーツ"
+              )}
+
+            </div>
+
+          </a>
+
+        `;
+
+      }
+
+    ).join("");
+
+
+  updateUnreadCount();
 
 }
 
 
-
-/*
-========================================
-既読にする
-========================================
-*/
+/* =========================
+   既読
+========================= */
 
 function markAsRead(id) {
 
 
-  if (!readArticles.includes(id)) {
+  if (
+    !readArticles.includes(id)
+  ) {
 
     readArticles.push(id);
 
@@ -525,7 +640,9 @@ function markAsRead(id) {
 
       "dragonsReadArticles",
 
-      JSON.stringify(readArticles)
+      JSON.stringify(
+        readArticles
+      )
 
     );
 
@@ -534,77 +651,101 @@ function markAsRead(id) {
 }
 
 
+/* =========================
+   未読件数
+========================= */
 
-/*
-========================================
-未読件数
-========================================
-*/
-
-function updateCount() {
+function updateUnreadCount() {
 
 
-  const unread =
+  const count =
+
     articles.filter(
 
       article =>
-        !readArticles.includes(article.id)
+        !readArticles.includes(
+          article.id
+        )
 
     ).length;
 
 
   document.getElementById(
     "unreadCount"
-  ).textContent = unread;
+  ).textContent =
+    count;
 
 }
 
 
+/* =========================
+   フィルター
+========================= */
 
-/*
-========================================
-フィルター
-========================================
-*/
-
-function changeFilter(filter) {
+function changeFilter(
+  filter
+) {
 
 
-  currentFilter = filter;
+  currentFilter =
+    filter;
 
 
   document
-    .querySelectorAll(".buttons button")
-    .forEach(button => {
+    .querySelectorAll(
+      ".buttons button"
+    )
+    .forEach(
 
-      button.classList.remove("active");
+      button =>
+        button.classList.remove(
+          "active"
+        )
 
-    });
+    );
 
 
-  if (filter === "all") {
+  if (
+    filter === "all"
+  ) {
 
     document
-      .getElementById("allButton")
-      .classList.add("active");
+      .getElementById(
+        "allButton"
+      )
+      .classList.add(
+        "active"
+      );
 
   }
 
 
-  if (filter === "unread") {
+  if (
+    filter === "unread"
+  ) {
 
     document
-      .getElementById("unreadButton")
-      .classList.add("active");
+      .getElementById(
+        "unreadButton"
+      )
+      .classList.add(
+        "active"
+      );
 
   }
 
 
-  if (filter === "read") {
+  if (
+    filter === "read"
+  ) {
 
     document
-      .getElementById("readButton")
-      .classList.add("active");
+      .getElementById(
+        "readButton"
+      )
+      .classList.add(
+        "active"
+      );
 
   }
 
@@ -614,65 +755,50 @@ function changeFilter(filter) {
 }
 
 
+/* =========================
+   HTMLエスケープ
+========================= */
 
-/*
-========================================
-更新
-========================================
-*/
-
-function refreshArticles() {
-
-
-  /*
-  今は画面を再読み込みします。
-
-  自動取得機能を追加した後は、
-
-  「中日スポーツから最新記事を取得」
-
-  に変更します。
-  */
+function escapeHtml(
+  text
+) {
 
 
-  location.reload();
+  return String(text)
 
-}
+    .replace(
+      /&/g,
+      "&amp;"
+    )
 
+    .replace(
+      /</g,
+      "&lt;"
+    )
 
+    .replace(
+      />/g,
+      "&gt;"
+    )
 
-/*
-========================================
-HTMLエスケープ
-========================================
-*/
+    .replace(
+      /"/g,
+      "&quot;"
+    )
 
-function escapeHtml(text) {
-
-
-  return text
-
-    .replace(/&/g, "&amp;")
-
-    .replace(/</g, "&lt;")
-
-    .replace(/>/g, "&gt;")
-
-    .replace(/"/g, "&quot;")
-
-    .replace(/'/g, "&#039;");
+    .replace(
+      /'/g,
+      "&#039;"
+    );
 
 }
 
 
+/* =========================
+   起動
+========================= */
 
-/*
-========================================
-初期表示
-========================================
-*/
-
-renderArticles();
+loadArticles();
 
 
 </script>
