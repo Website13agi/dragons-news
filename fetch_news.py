@@ -2,24 +2,38 @@ import json
 import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
+import html
 
 
-RSS_URL = (
-    "https://news.google.com/rss/search?"
-    + urllib.parse.urlencode({
-        "q": 'site:chunichi.co.jp/chuspo "ドラゴンズ"',
+OUTPUT = "articles.json"
+PEOPLE_FILE = "dragons_people.json"
+
+
+SEARCH_QUERIES = [
+    'site:chunichi.co.jp/chuspo ドラゴンズ',
+    'site:chunichi.co.jp/chuspo "中日ドラゴンズ"',
+    'site:chunichi.co.jp/chuspo "中日" "野球"',
+    'site:chunichi.co.jp/chuspo "2軍" "中日"',
+    'site:chunichi.co.jp/chuspo "ファーム" "中日"',
+]
+
+
+def fetch_rss(query):
+
+    params = urllib.parse.urlencode({
+        "q": query,
         "hl": "ja",
         "gl": "JP",
         "ceid": "JP:ja"
     })
-)
 
-OUTPUT = "articles.json"
+    url = (
+        "https://news.google.com/rss/search?"
+        + params
+    )
 
-
-def fetch_rss():
     request = urllib.request.Request(
-        RSS_URL,
+        url,
         headers={
             "User-Agent": "Mozilla/5.0"
         }
@@ -29,101 +43,319 @@ def fetch_rss():
         request,
         timeout=30
     ) as response:
+
         return response.read()
+
+
+def clean_text(text):
+
+    if not text:
+        return ""
+
+    return html.unescape(text)
+
+
+def load_people():
+
+    with open(
+        PEOPLE_FILE,
+        "r",
+        encoding="utf-8"
+    ) as file:
+
+        data = json.load(file)
+
+    players = data.get(
+        "players",
+        []
+    )
+
+    coaches = data.get(
+        "coaches",
+        []
+    )
+
+    return players, coaches
+
+
+def is_dragons_article(
+    title,
+    description,
+    players,
+    coaches
+):
+
+    text = (
+        title
+        + " "
+        + description
+    )
+
+    # --------------------------------
+    # ① ドラゴンズ固有語
+    # --------------------------------
+
+    strong_keywords = [
+        "中日ドラゴンズ",
+        "ドラゴンズ",
+        "バンテリンドーム",
+        "ナゴヤ球場",
+        "若竜",
+        "竜戦士",
+    ]
+
+    for keyword in strong_keywords:
+
+        if keyword in text:
+
+            return True
+
+
+    # --------------------------------
+    # ② 選手名
+    # --------------------------------
+
+    for name in players:
+
+        if name in text:
+
+            return True
+
+
+    # --------------------------------
+    # ③ 監督・コーチ名
+    # --------------------------------
+
+    for name in coaches:
+
+        if name in text:
+
+            return True
+
+
+    # --------------------------------
+    # ④ 中日＋野球関連語
+    # --------------------------------
+
+    baseball_keywords = [
+
+        "プロ野球",
+        "セ・リーグ",
+        "セリーグ",
+        "野球",
+        "投手",
+        "打者",
+        "先発",
+        "中継ぎ",
+        "抑え",
+        "本塁打",
+        "ホームラン",
+        "安打",
+        "三振",
+        "登板",
+        "打席",
+        "出場選手登録",
+        "登録抹消",
+        "一軍",
+        "1軍",
+        "二軍",
+        "2軍",
+        "ファーム",
+        "キャンプ",
+        "オープン戦",
+        "ドラフト",
+    ]
+
+    has_baseball = any(
+        keyword in text
+        for keyword in baseball_keywords
+    )
+
+    if (
+        "中日" in text
+        and has_baseball
+    ):
+
+        return True
+
+
+    return False
 
 
 def main():
 
-    data = fetch_rss()
-
-    root = ET.fromstring(data)
+    players, coaches = load_people()
 
     articles = []
 
-    for item in root.findall(".//item"):
 
-        title = item.findtext(
-            "title",
-            ""
-        )
+    # --------------------------------
+    # RSSを複数検索
+    # --------------------------------
 
-        url = item.findtext(
-            "link",
-            ""
-        )
+    for query in SEARCH_QUERIES:
 
-        date = item.findtext(
-            "pubDate",
-            ""
-        )
+        try:
 
-        source_element = item.find(
-            "source"
-        )
+            data = fetch_rss(query)
 
-        source = ""
+            root = ET.fromstring(data)
 
-        if source_element is not None:
-            source = (
-                source_element.text or ""
+        except Exception as error:
+
+            print(
+                "RSS取得エラー:",
+                error
             )
 
-        # タイトルにドラゴンズ関連語があるもの
-        keywords = [
-            "中日",
-            "ドラゴンズ",
-            "竜",
-            "バンテリンドーム",
-            "ナゴヤ球場"
-        ]
-
-        if not any(
-            keyword in title
-            for keyword in keywords
-        ):
             continue
 
-        articles.append({
-            "id": url,
-            "title": title,
-            "date": date,
-            "url": url,
-            "source": source
-        })
 
-    # 重複除去
-    unique = {}
+        # --------------------------------
+        # 記事を処理
+        # --------------------------------
+
+        for item in root.findall(
+            ".//item"
+        ):
+
+            title = clean_text(
+                item.findtext(
+                    "title",
+                    ""
+                )
+            )
+
+            url = item.findtext(
+                "link",
+                ""
+            )
+
+            date = item.findtext(
+                "pubDate",
+                ""
+            )
+
+            description = clean_text(
+                item.findtext(
+                    "description",
+                    ""
+                )
+            )
+
+            source_element = item.find(
+                "source"
+            )
+
+            source = ""
+
+            if source_element is not None:
+
+                source = (
+                    source_element.text
+                    or ""
+                )
+
+
+            # --------------------------------
+            # 中日スポーツ以外を除外
+            # --------------------------------
+
+            if (
+                "中日スポーツ"
+                not in source
+            ):
+
+                continue
+
+
+            # --------------------------------
+            # ドラゴンズ判定
+            # --------------------------------
+
+            if not is_dragons_article(
+                title,
+                description,
+                players,
+                coaches
+            ):
+
+                continue
+
+
+            articles.append({
+
+                "id": url,
+
+                "title": title,
+
+                "date": date,
+
+                "url": url,
+
+                "source": "中日スポーツ"
+
+            })
+
+
+    # --------------------------------
+    # URL重複除去
+    # --------------------------------
+
+    unique_articles = {}
 
     for article in articles:
-        unique[
+
+        unique_articles[
             article["id"]
         ] = article
 
+
     articles = list(
-        unique.values()
+        unique_articles.values()
     )
 
+
+    # --------------------------------
     # 新しい順
+    # --------------------------------
+
     articles.sort(
-        key=lambda x: x["date"],
+        key=lambda article:
+            article["date"],
         reverse=True
     )
 
-    # 最大100件
+
+    # --------------------------------
+    # 最大100記事
+    # --------------------------------
+
     articles = articles[:100]
+
+
+    # --------------------------------
+    # 保存
+    # --------------------------------
 
     with open(
         OUTPUT,
         "w",
         encoding="utf-8"
-    ) as f:
+    ) as file:
 
         json.dump(
             articles,
-            f,
+            file,
             ensure_ascii=False,
             indent=2
         )
+
+
+    print(
+        "取得記事数:",
+        len(articles)
+    )
 
 
 if __name__ == "__main__":
