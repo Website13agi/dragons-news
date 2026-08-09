@@ -1,334 +1,93 @@
 import json
-import urllib.request
-import urllib.parse
-import xml.etree.ElementTree as ET
-import html
 import re
-
 from datetime import datetime, timedelta, timezone
-from email.utils import parsedate_to_datetime
+from urllib.parse import urljoin
+
+from playwright.sync_api import sync_playwright
 
 
 OUTPUT = "articles.json"
-PEOPLE_FILE = "dragons_people.json"
+
+BASE_URL = "https://www.chunichi.co.jp"
+NEWS_URL = "https://www.chunichi.co.jp/chuspo"
+
+JST = timezone(timedelta(hours=9))
 
 
-# ==========================================
-# Google News 検索
-# ==========================================
-
-SEARCH_QUERIES = [
-    'site:chunichi.co.jp/chuspo ドラゴンズ',
-    'site:chunichi.co.jp/chuspo "中日ドラゴンズ"',
-    'site:chunichi.co.jp/chuspo "中日" 野球',
-    'site:chunichi.co.jp/chuspo "2軍" 中日',
-    'site:chunichi.co.jp/chuspo "ファーム" 中日',
-    'site:chunichi.co.jp/chuspo "一軍" 中日',
-]
-
-
-# ==========================================
-# Google News RSS取得
-# ==========================================
-
-def fetch_rss(query):
-
-    params = urllib.parse.urlencode({
-        "q": query,
-        "hl": "ja",
-        "gl": "JP",
-        "ceid": "JP:ja"
-    })
-
-    url = (
-        "https://news.google.com/rss/search?"
-        + params
-    )
-
-    request = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": "Mozilla/5.0"
-        }
-    )
-
-    with urllib.request.urlopen(
-        request,
-        timeout=30
-    ) as response:
-
-        return response.read()
-
-
-# ==========================================
-# HTML文字列をきれいにする
-# ==========================================
-
-def clean_text(text):
+def parse_date(text):
+    """
+    ページ内の日付表記を解析
+    """
 
     if not text:
-        return ""
-
-    text = html.unescape(text)
-
-    text = re.sub(
-        r"<[^>]+>",
-        " ",
-        text
-    )
-
-    text = re.sub(
-        r"\s+",
-        " ",
-        text
-    )
-
-    return text.strip()
-
-
-# ==========================================
-# 選手・首脳陣を読み込む
-# ==========================================
-
-def load_people():
-
-    try:
-
-        with open(
-            PEOPLE_FILE,
-            "r",
-            encoding="utf-8"
-        ) as file:
-
-            data = json.load(file)
-
-    except Exception as error:
-
-        print(
-            "人物ファイル読み込みエラー:",
-            error
-        )
-
-        return [], []
-
-
-    players = data.get(
-        "players",
-        []
-    )
-
-    coaches = data.get(
-        "coaches",
-        []
-    )
-
-    return players, coaches
-
-
-# ==========================================
-# ドラゴンズ記事判定
-# ==========================================
-
-def is_dragons_article(
-    title,
-    description,
-    players,
-    coaches
-):
-
-    text = (
-        title
-        + " "
-        + description
-    )
-
-    # --------------------------------------
-    # ドラゴンズ固有語
-    # --------------------------------------
-
-    strong_keywords = [
-        "中日ドラゴンズ",
-        "ドラゴンズ",
-        "バンテリンドーム",
-        "ナゴヤ球場",
-        "若竜",
-        "竜戦士",
-        "竜党",
-    ]
-
-    for keyword in strong_keywords:
-
-        if keyword in text:
-            return True
-
-
-    # --------------------------------------
-    # 選手名
-    # --------------------------------------
-
-    for name in players:
-
-        if name and name in text:
-            return True
-
-
-    # --------------------------------------
-    # 監督・コーチ名
-    # --------------------------------------
-
-    for name in coaches:
-
-        if name and name in text:
-            return True
-
-
-    # --------------------------------------
-    # 「中日」＋野球関連語
-    # --------------------------------------
-
-    baseball_keywords = [
-
-        "プロ野球",
-        "セ・リーグ",
-        "セリーグ",
-        "野球",
-        "投手",
-        "打者",
-        "先発",
-        "中継ぎ",
-        "抑え",
-        "本塁打",
-        "ホームラン",
-        "安打",
-        "三振",
-        "登板",
-        "打席",
-        "出場選手登録",
-        "登録抹消",
-        "一軍",
-        "1軍",
-        "二軍",
-        "2軍",
-        "ファーム",
-        "キャンプ",
-        "オープン戦",
-        "ドラフト",
-        "練習試合",
-        "交流戦",
-        "クライマックスシリーズ",
-        "CS",
-
-    ]
-
-    has_baseball = any(
-        keyword in text
-        for keyword in baseball_keywords
-    )
-
-    if (
-        "中日" in text
-        and has_baseball
-    ):
-        return True
-
-
-    return False
-
-
-# ==========================================
-# 中日スポーツ判定
-# ==========================================
-
-def is_chunichi_sports(
-    source,
-    source_url,
-    title,
-    description
-):
-
-    text = (
-        source
-        + " "
-        + source_url
-        + " "
-        + title
-        + " "
-        + description
-    )
-
-    if "中日スポーツ" in source:
-        return True
-
-    if "Chunichi Sports" in source:
-        return True
-
-    if "chunichi.co.jp/chuspo" in source_url:
-        return True
-
-    if "中日スポーツ" in text:
-        return True
-
-    return False
-
-
-# ==========================================
-# RSSの日付をdatetimeに変換
-# ==========================================
-
-def parse_article_date(date_text):
-
-    try:
-
-        article_date = parsedate_to_datetime(
-            date_text
-        )
-
-        if article_date.tzinfo is None:
-
-            article_date = article_date.replace(
-                tzinfo=timezone.utc
-            )
-
-        return article_date.astimezone(
-            timezone.utc
-        )
-
-    except Exception:
-
         return None
 
+    patterns = [
+        r"2026[年/-]\s*(\d{1,2})[月/-]\s*(\d{1,2})日?\s+(\d{1,2}):(\d{2})",
+        r"(\d{4})[年/-]\s*(\d{1,2})[月/-]\s*(\d{1,2})日?\s+(\d{1,2}):(\d{2})",
+    ]
 
-# ==========================================
-# メイン処理
-# ==========================================
+    for pattern in patterns:
+
+        match = re.search(
+            pattern,
+            text
+        )
+
+        if match:
+
+            groups = match.groups()
+
+            if len(groups) == 4:
+
+                year = 2026
+                month, day, hour, minute = map(
+                    int,
+                    groups
+                )
+
+            else:
+
+                year, month, day, hour, minute = map(
+                    int,
+                    groups
+                )
+
+            try:
+
+                return datetime(
+                    year,
+                    month,
+                    day,
+                    hour,
+                    minute,
+                    tzinfo=JST
+                )
+
+            except ValueError:
+
+                return None
+
+    return None
+
+
+def clean_title(title):
+
+    if not title:
+        return ""
+
+    title = re.sub(
+        r"\s+",
+        " ",
+        title
+    )
+
+    return title.strip()
+
 
 def main():
 
-    players, coaches = load_people()
-
-    print(
-        "選手:",
-        len(players),
-        "人"
-    )
-
-    print(
-        "首脳陣:",
-        len(coaches),
-        "人"
-    )
-
-
-    articles = []
-
-
-    # ======================================
-    # 1週間前の時刻
-    # ======================================
-
-    now = datetime.now(
-        timezone.utc
-    )
+    now = datetime.now(JST)
 
     one_week_ago = (
         now
@@ -336,118 +95,215 @@ def main():
     )
 
 
-    total_rss = 0
-    total_source = 0
-    total_dragons = 0
-    total_recent = 0
+    print(
+        "現在時刻:",
+        now.isoformat()
+    )
+
+    print(
+        "取得対象:",
+        one_week_ago.isoformat(),
+        "以降"
+    )
 
 
-    # ======================================
-    # Google News RSSを検索
-    # ======================================
+    articles = []
 
-    for query in SEARCH_QUERIES:
+    seen_urls = set()
 
-        print("")
-        print(
-            "======================================"
+
+    with sync_playwright() as p:
+
+        browser = p.chromium.launch(
+            headless=True
         )
 
-        print(
-            "検索:",
-            query
-        )
-
-
-        try:
-
-            data = fetch_rss(
-                query
-            )
-
-            root = ET.fromstring(
-                data
-            )
-
-        except Exception as error:
-
-            print(
-                "RSS取得エラー:",
-                error
-            )
-
-            continue
-
-
-        items = root.findall(
-            ".//item"
+        page = browser.new_page(
+            locale="ja-JP"
         )
 
 
         print(
-            "RSS取得記事数:",
-            len(items)
+            "中日スポーツを取得中..."
         )
 
 
-        total_rss += len(items)
+        page.goto(
+            NEWS_URL,
+            wait_until="domcontentloaded",
+            timeout=60000
+        )
 
 
-        for item in items:
+        page.wait_for_timeout(
+            5000
+        )
+
+
+        # ==================================
+        # ページ内の全リンクを取得
+        # ==================================
+
+        links = page.locator(
+            "a"
+        ).all()
+
+
+        print(
+            "リンク数:",
+            len(links)
+        )
+
+
+        # ==================================
+        # 個別記事URLを探す
+        # ==================================
+
+        for link in links:
+
+            try:
+
+                href = link.get_attribute(
+                    "href"
+                )
+
+                title = link.inner_text()
+
+            except Exception:
+
+                continue
+
+
+            if not href:
+                continue
+
+
+            href = urljoin(
+                BASE_URL,
+                href
+            )
+
+
+            # --------------------------------
+            # 中日新聞社の個別記事だけ
+            # --------------------------------
+
+            if not re.search(
+                r"https://www\.chunichi\.co\.jp/article/\d+",
+                href
+            ):
+
+                continue
+
+
+            title = clean_title(
+                title
+            )
+
+
+            if not title:
+                continue
+
+
+            if href in seen_urls:
+                continue
+
+
+            seen_urls.add(
+                href
+            )
+
 
             # ==================================
-            # 基本情報
+            # 個別記事ページを開く
             # ==================================
 
-            title = clean_text(
-                item.findtext(
-                    "title",
-                    ""
+            try:
+
+                article_page = (
+                    browser.new_page(
+                        locale="ja-JP"
+                    )
                 )
-            )
 
 
-            url = clean_text(
-                item.findtext(
-                    "link",
-                    ""
+                article_page.goto(
+                    href,
+                    wait_until="domcontentloaded",
+                    timeout=30000
                 )
-            )
 
 
-            date = clean_text(
-                item.findtext(
-                    "pubDate",
-                    ""
+                article_page.wait_for_timeout(
+                    1000
                 )
-            )
 
 
-            description = clean_text(
-                item.findtext(
-                    "description",
-                    ""
+                # ------------------------------
+                # ページテキスト
+                # ------------------------------
+
+                body_text = (
+                    article_page
+                    .locator("body")
+                    .inner_text()
                 )
-            )
+
+
+                # ------------------------------
+                # タイトル
+                # ------------------------------
+
+                page_title = (
+                    article_page
+                    .title()
+                )
+
+
+                if page_title:
+
+                    page_title = clean_title(
+                        page_title
+                    )
+
+                    if page_title:
+                        title = page_title
+
+
+                # ------------------------------
+                # 日付
+                # ------------------------------
+
+                article_date = parse_date(
+                    body_text
+                )
+
+
+                article_page.close()
+
+
+            except Exception as error:
+
+                print(
+                    "記事取得エラー:",
+                    href,
+                    error
+                )
+
+                continue
 
 
             # ==================================
-            # 日付
+            # 日付が取得できなければ除外
             # ==================================
 
-            article_date = parse_article_date(
-                date
-            )
-
-
-            # 日付が取得できない記事は除外
             if article_date is None:
 
                 continue
 
 
             # ==================================
-            # 1週間より古い記事を除外
+            # 7日より古ければ除外
             # ==================================
 
             if article_date < one_week_ago:
@@ -455,141 +311,89 @@ def main():
                 continue
 
 
-            total_recent += 1
-
-
             # ==================================
-            # source
+            # 将来の日付も除外
             # ==================================
 
-            source_element = item.find(
-                "source"
-            )
-
-
-            source = ""
-            source_url = ""
-
-
-            if source_element is not None:
-
-                source = clean_text(
-                    source_element.text
-                    or ""
-                )
-
-                source_url = (
-                    source_element.attrib.get(
-                        "url",
-                        ""
-                    )
-                )
-
-
-            # ==================================
-            # 中日スポーツ判定
-            # ==================================
-
-            if not is_chunichi_sports(
-                source,
-                source_url,
-                title,
-                description
-            ):
+            if article_date > now:
 
                 continue
-
-
-            total_source += 1
 
 
             # ==================================
             # ドラゴンズ記事判定
             # ==================================
 
-            if not is_dragons_article(
-                title,
-                description,
-                players,
-                coaches
+            dragons_keywords = [
+
+                "中日",
+                "ドラゴンズ",
+                "井上",
+                "バンテリンドーム",
+                "ナゴヤ球場",
+                "柳裕也",
+                "細川成也",
+                "石川昂弥",
+                "福永裕基",
+                "岡林勇希",
+                "上林誠知",
+
+            ]
+
+
+            if not any(
+                keyword in (
+                    title
+                    + " "
+                    + body_text
+                )
+                for keyword in dragons_keywords
             ):
 
                 continue
 
 
-            total_dragons += 1
-
-
             # ==================================
-            # 記事追加
+            # 記事保存
             # ==================================
 
             articles.append({
 
-                "id": url,
+                "id": href,
 
                 "title": title,
 
-                "date": date,
+                "date":
+                    article_date.strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    ),
 
-                "url": url,
+                "url": href,
 
                 "source": "中日スポーツ"
 
             })
 
 
-    # ==========================================
-    # URLで重複除去
-    # ==========================================
-
-    unique_articles = {}
-
-
-    for article in articles:
-
-        article_id = article.get(
-            "id",
-            ""
-        )
-
-        if not article_id:
-            continue
-
-        unique_articles[
-            article_id
-        ] = article
-
-
-    articles = list(
-        unique_articles.values()
-    )
-
-
-    # ==========================================
-    # 最新記事順
-    # ==========================================
-
-    def sort_key(article):
-
-        date = parse_article_date(
-            article.get(
-                "date",
-                ""
-            )
-        )
-
-        if date is None:
-
-            return datetime.min.replace(
-                tzinfo=timezone.utc
+            print(
+                "取得:",
+                article_date.strftime(
+                    "%Y-%m-%d %H:%M"
+                ),
+                title
             )
 
-        return date
 
+        browser.close()
+
+
+    # ==========================================
+    # 新しい順
+    # ==========================================
 
     articles.sort(
-        key=sort_key,
+        key=lambda article:
+            article["date"],
         reverse=True
     )
 
@@ -619,44 +423,21 @@ def main():
         )
 
 
-    # ==========================================
-    # 結果表示
-    # ==========================================
-
     print("")
     print(
-        "======================================"
+        "=============================="
     )
 
     print(
-        "Google News取得記事:",
-        total_rss
-    )
-
-    print(
-        "1週間以内の記事:",
-        total_recent
-    )
-
-    print(
-        "中日スポーツ記事:",
-        total_source
-    )
-
-    print(
-        "ドラゴンズ関連記事:",
-        total_dragons
-    )
-
-    print(
-        "最終保存記事:",
+        "保存記事数:",
         len(articles)
     )
 
     print(
-        "======================================"
+        "=============================="
     )
 
 
 if __name__ == "__main__":
+
     main()
