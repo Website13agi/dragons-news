@@ -4,7 +4,6 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from html import unescape
 
-
 OUTPUT = "articles.json"
 
 SOURCE_URL = "https://dragons.jp/"
@@ -17,12 +16,7 @@ def fetch_page(url):
     request = urllib.request.Request(
         url,
         headers={
-            "User-Agent": (
-                "Mozilla/5.0 "
-                "(Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 "
-                "Chrome/131.0 Safari/537.36"
-            )
+            "User-Agent": "Mozilla/5.0"
         }
     )
 
@@ -59,17 +53,6 @@ def clean_text(text):
     return text.strip()
 
 
-def absolute_url(url):
-
-    if url.startswith("//"):
-        return "https:" + url
-
-    if url.startswith("/"):
-        return "https://dragons.jp" + url
-
-    return url
-
-
 def main():
 
     now = datetime.now(JST)
@@ -78,72 +61,22 @@ def main():
         now - timedelta(days=7)
     )
 
-    print(
-        "中日ドラゴンズ公式サイト取得開始"
+    html = fetch_page(
+        SOURCE_URL
     )
-
-    print(
-        "現在:",
-        now.strftime(
-            "%Y-%m-%d %H:%M:%S"
-        )
-    )
-
-    try:
-
-        html = fetch_page(
-            SOURCE_URL
-        )
-
-    except Exception as error:
-
-        print(
-            "取得エラー:",
-            error
-        )
-
-        return
-
-
-    print(
-        "HTML取得:",
-        len(html),
-        "bytes"
-    )
-
 
     articles = {}
-
-    # ==================================================
-    # aタグをすべて取得
-    # ==================================================
 
     pattern = re.compile(
         r"<a\b([^>]*)>(.*?)</a>",
         re.S | re.I
     )
 
-
     matches = pattern.findall(
         html
     )
 
-
-    print(
-        "リンク数:",
-        len(matches)
-    )
-
-
-    # ==================================================
-    # 「中スポ」周辺から記事を取得
-    # ==================================================
-
     for attributes, inner_html in matches:
-
-        # ----------------------------------------------
-        # href
-        # ----------------------------------------------
 
         href_match = re.search(
             r'href\s*=\s*["\']([^"\']+)["\']',
@@ -154,51 +87,73 @@ def main():
         if not href_match:
             continue
 
-
         url = href_match.group(1)
-
-        url = absolute_url(
-            url
-        )
-
-
-        # ----------------------------------------------
-        # sp.chunichi.co.jp の記事だけ
-        # ----------------------------------------------
-
-        if "sp.chunichi.co.jp" not in url:
-            continue
-
-
-        # ----------------------------------------------
-        # リンク本文
-        # ----------------------------------------------
 
         text = clean_text(
             inner_html
         )
 
-
         if not text:
             continue
 
 
-        # ==================================================
-        # 中スポ記事の日付
-        #
-        # 例:
-        # 2026/08/09
-        # ==================================================
+        # ==========================================
+        # 中日スポーツの記事だけ
+        # ==========================================
+
+        if "sp.chunichi.co.jp/dra/news/" not in url:
+            continue
+
+
+        # ==========================================
+        # 動画・映画系を除外
+        # ==========================================
+
+        if "/movie/" in url:
+            continue
+
+
+        # ==========================================
+        # ドラゴンズ関連
+        # ==========================================
+
+        keywords = [
+            "中日",
+            "ドラゴンズ",
+            "井上",
+            "柳",
+            "石伊",
+            "斎藤",
+            "田中幹也",
+            "福永",
+            "岡林",
+            "細川",
+            "石川",
+            "村松",
+            "松山",
+            "金丸",
+            "マラー",
+            "今中",
+        ]
+
+        if not any(
+            keyword in text
+            for keyword in keywords
+        ):
+            continue
+
+
+        # ==========================================
+        # 日付
+        # ==========================================
 
         date_match = re.search(
             r"2026/(\d{1,2})/(\d{1,2})",
             text
         )
 
-
         if not date_match:
             continue
-
 
         month = int(
             date_match.group(1)
@@ -208,16 +163,15 @@ def main():
             date_match.group(2)
         )
 
-
         try:
 
             article_date = datetime(
                 2026,
                 month,
                 day,
-                23,
-                59,
-                59,
+                12,
+                0,
+                0,
                 tzinfo=JST
             )
 
@@ -226,21 +180,20 @@ def main():
             continue
 
 
-        # ==================================================
+        # ==========================================
         # 7日以内
-        # ==================================================
+        # ==========================================
 
         if article_date < one_week_ago:
             continue
 
-
-        if article_date > now + timedelta(days=1):
+        if article_date > now:
             continue
 
 
-        # ==================================================
+        # ==========================================
         # タイトル
-        # ==================================================
+        # ==========================================
 
         title = re.sub(
             r"2026/\d{1,2}/\d{1,2}",
@@ -248,33 +201,28 @@ def main():
             text
         )
 
-
-        title = re.sub(
-            r"中日ドラゴンズニュース",
-            "",
-            title
-        )
-
-
-        title = re.sub(
-            r"井上監督ポジ語録",
-            "",
-            title
-        )
-
-
         title = clean_text(
             title
         )
-
 
         if not title:
             continue
 
 
-        # ==================================================
-        # 取得
-        # ==================================================
+        # ==========================================
+        # URL
+        # ==========================================
+
+        if url.startswith("/"):
+            url = (
+                "https://sp.chunichi.co.jp"
+                + url
+            )
+
+
+        # ==========================================
+        # 重複除去
+        # ==========================================
 
         articles[url] = {
 
@@ -294,25 +242,13 @@ def main():
         }
 
 
-        print(
-            "取得:",
-            title
-        )
-
-        print(
-            "URL:",
-            url
-        )
-
-
-    # ==================================================
+    # ==========================================
     # 最新順
-    # ==================================================
+    # ==========================================
 
     result = list(
         articles.values()
     )
-
 
     result.sort(
         key=lambda x: x["date"],
@@ -320,16 +256,16 @@ def main():
     )
 
 
-    # ==================================================
-    # 最大100件
-    # ==================================================
+    # ==========================================
+    # 最大100記事
+    # ==========================================
 
     result = result[:100]
 
 
-    # ==================================================
-    # JSON保存
-    # ==================================================
+    # ==========================================
+    # 保存
+    # ==========================================
 
     with open(
         OUTPUT,
@@ -345,19 +281,20 @@ def main():
         )
 
 
-    print("")
-    print(
-        "=============================="
-    )
-
     print(
         "取得記事数:",
         len(result)
     )
 
-    print(
-        "=============================="
-    )
+    for article in result:
+
+        print(
+            article["date"],
+            "|",
+            article["title"],
+            "|",
+            article["url"]
+        )
 
 
 if __name__ == "__main__":
