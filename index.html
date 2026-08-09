@@ -1,252 +1,682 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dragons News</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <style>
-    * {
-      box-sizing: border-box;
-    }
+<title>Dragons News</title>
 
-    body {
-      margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
-                   "Noto Sans JP", sans-serif;
-      background: #f5f5f5;
-      color: #222;
-    }
+<style>
 
-    header {
-      background: #000;
-      color: #fff;
-      padding: 18px 20px;
-    }
+* {
+  box-sizing: border-box;
+}
 
-    header h1 {
-      margin: 0;
-      font-size: 24px;
-    }
+body {
+  margin: 0;
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    "Noto Sans JP",
+    sans-serif;
 
-    header p {
-      margin: 5px 0 0;
-      color: #bbb;
-      font-size: 13px;
-    }
+  background: #f4f4f4;
+  color: #222;
+}
 
-    .container {
-      max-width: 800px;
-      margin: 0 auto;
-      padding: 20px 15px;
-    }
+/* ヘッダー */
 
-    .status {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 15px;
-    }
+header {
+  background: #111;
+  color: white;
+  padding: 18px 20px;
+}
 
-    .filter {
-      border: none;
-      padding: 8px 14px;
-      border-radius: 20px;
-      background: #ddd;
-      cursor: pointer;
-    }
+.header-inner {
+  max-width: 900px;
+  margin: auto;
+}
 
-    .filter.active {
-      background: #000;
-      color: #fff;
-    }
+header h1 {
+  margin: 0;
+  font-size: 24px;
+}
 
-    .article {
-      display: block;
-      background: #fff;
-      border-radius: 10px;
-      padding: 16px;
-      margin-bottom: 10px;
-      text-decoration: none;
-      color: inherit;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-      transition: 0.2s;
-    }
+header p {
+  margin: 5px 0 0;
+  color: #aaa;
+  font-size: 13px;
+}
 
-    .article:hover {
-      transform: translateY(-1px);
-    }
+/* メイン */
 
-    .article.unread {
-      border-left: 4px solid #000;
-    }
+main {
+  max-width: 900px;
+  margin: auto;
+  padding: 20px 15px;
+}
 
-    .article.read {
-      opacity: 0.55;
-    }
+/* 上部 */
 
-    .title {
-      font-size: 17px;
-      font-weight: bold;
-      margin-bottom: 8px;
-    }
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 15px;
+  flex-wrap: wrap;
+}
 
-    .date {
-      font-size: 12px;
-      color: #777;
-    }
+.count {
+  font-size: 14px;
+  color: #555;
+}
 
-    .source {
-      font-size: 12px;
-      color: #999;
-      margin-top: 5px;
-    }
+/* ボタン */
 
-    .empty {
-      text-align: center;
-      color: #777;
-      padding: 50px 10px;
-    }
-  </style>
+.buttons {
+  display: flex;
+  gap: 6px;
+}
+
+button {
+  border: none;
+  border-radius: 20px;
+  padding: 8px 14px;
+  cursor: pointer;
+  background: #ddd;
+  color: #222;
+}
+
+button.active {
+  background: #111;
+  color: white;
+}
+
+button:hover {
+  opacity: 0.8;
+}
+
+/* 記事 */
+
+.article {
+  display: block;
+
+  background: white;
+
+  border-radius: 10px;
+
+  padding: 17px;
+
+  margin-bottom: 10px;
+
+  text-decoration: none;
+
+  color: inherit;
+
+  box-shadow:
+    0 1px 4px rgba(0,0,0,0.08);
+
+  transition: 0.15s;
+}
+
+.article:hover {
+  transform: translateY(-1px);
+}
+
+.article.unread {
+  border-left: 4px solid #111;
+}
+
+.article.read {
+  opacity: 0.55;
+}
+
+.article-title {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.article-meta {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #777;
+}
+
+.source {
+  margin-top: 5px;
+  font-size: 12px;
+  color: #999;
+}
+
+/* 新着マーク */
+
+.new {
+  display: inline-block;
+
+  margin-left: 6px;
+
+  padding: 2px 6px;
+
+  font-size: 10px;
+
+  border-radius: 4px;
+
+  background: #111;
+
+  color: white;
+}
+
+/* 空 */
+
+.empty {
+  text-align: center;
+  padding: 60px 10px;
+  color: #777;
+}
+
+/* スマホ */
+
+@media (max-width: 600px) {
+
+  header h1 {
+    font-size: 21px;
+  }
+
+  main {
+    padding: 15px 10px;
+  }
+
+  .article {
+    padding: 14px;
+  }
+
+  .article-title {
+    font-size: 16px;
+  }
+
+}
+
+</style>
 </head>
+
 
 <body>
 
+
 <header>
-  <h1>Dragons News</h1>
-  <p>中日ドラゴンズ ニュースリーダー</p>
+
+  <div class="header-inner">
+
+    <h1>Dragons News</h1>
+
+    <p>
+      中日ドラゴンズ ニュースリーダー
+    </p>
+
+  </div>
+
 </header>
 
-<main class="container">
 
-  <div class="status">
-    <button class="filter active" onclick="showArticles('all')">
-      すべて
-    </button>
 
-    <button class="filter" onclick="showArticles('unread')">
-      未読
-    </button>
+<main>
 
-    <button class="filter" onclick="showArticles('read')">
-      既読
-    </button>
+
+  <div class="toolbar">
+
+
+    <div class="count">
+
+      <span id="unreadCount">0</span>
+      件の未読
+
+    </div>
+
+
+    <div class="buttons">
+
+      <button
+        id="allButton"
+        class="active"
+        onclick="changeFilter('all')">
+
+        すべて
+
+      </button>
+
+
+      <button
+        id="unreadButton"
+        onclick="changeFilter('unread')">
+
+        未読
+
+      </button>
+
+
+      <button
+        id="readButton"
+        onclick="changeFilter('read')">
+
+        既読
+
+      </button>
+
+
+      <button
+        onclick="refreshArticles()">
+
+        更新
+
+      </button>
+
+    </div>
+
+
   </div>
+
+
 
   <div id="articles"></div>
 
+
 </main>
+
+
 
 <script>
 
+
+/*
+========================================
+記事データ
+========================================
+
+将来的にはここを自動取得に変更します。
+*/
+
 const articles = [
+
   {
-    id: 1,
-    title: "中日ドラゴンズ関連記事をここに表示します",
-    date: "2026-08-09",
-    url: "https://www.chunichi.co.jp/chuspo"
+    id: "sample-1",
+
+    title:
+      "中日ドラゴンズ関連記事をここに表示します",
+
+    date:
+      "2026-08-09 20:00",
+
+    url:
+      "https://www.chunichi.co.jp/chuspo",
+
+    source:
+      "中日スポーツ"
   },
+
+
   {
-    id: 2,
-    title: "記事をクリックすると元記事を開きます",
-    date: "2026-08-09",
-    url: "https://www.chunichi.co.jp/chuspo"
+    id: "sample-2",
+
+    title:
+      "ここに最新記事が自動的に追加されます",
+
+    date:
+      "2026-08-09 18:00",
+
+    url:
+      "https://www.chunichi.co.jp/chuspo",
+
+    source:
+      "中日スポーツ"
   },
+
+
   {
-    id: 3,
-    title: "クリックした記事は既読になります",
-    date: "2026-08-08",
-    url: "https://www.chunichi.co.jp/chuspo"
+    id: "sample-3",
+
+    title:
+      "クリックすると元記事を開き、既読になります",
+
+    date:
+      "2026-08-09 15:00",
+
+    url:
+      "https://www.chunichi.co.jp/chuspo",
+
+    source:
+      "中日スポーツ"
   }
+
 ];
 
+
+
+/*
+========================================
+既読データ
+========================================
+*/
+
 let readArticles =
-  JSON.parse(localStorage.getItem("readArticles") || "[]");
+  JSON.parse(
+    localStorage.getItem("dragonsReadArticles")
+    || "[]"
+  );
+
+
+
+/*
+========================================
+現在の表示
+========================================
+*/
 
 let currentFilter = "all";
 
+
+
+/*
+========================================
+記事表示
+========================================
+*/
+
 function renderArticles() {
 
-  const container = document.getElementById("articles");
+  const container =
+    document.getElementById("articles");
 
-  let filtered = articles.filter(article => {
 
-    const isRead = readArticles.includes(article.id);
+  let filteredArticles =
+    articles.filter(article => {
 
-    if (currentFilter === "read") {
-      return isRead;
-    }
+      const isRead =
+        readArticles.includes(article.id);
 
-    if (currentFilter === "unread") {
-      return !isRead;
-    }
 
-    return true;
-  });
+      if (currentFilter === "read") {
 
-  if (filtered.length === 0) {
+        return isRead;
+
+      }
+
+
+      if (currentFilter === "unread") {
+
+        return !isRead;
+
+      }
+
+
+      return true;
+
+    });
+
+
+  /*
+  記事がない場合
+  */
+
+  if (filteredArticles.length === 0) {
 
     container.innerHTML =
-      '<div class="empty">表示する記事がありません</div>';
+      `
+      <div class="empty">
+
+        表示する記事がありません
+
+      </div>
+      `;
+
+    updateCount();
 
     return;
+
   }
 
-  container.innerHTML = filtered.map(article => {
 
-    const isRead = readArticles.includes(article.id);
 
-    return `
-      <a
-        class="article ${isRead ? "read" : "unread"}"
-        href="${article.url}"
-        target="_blank"
-        onclick="markAsRead(${article.id})"
-      >
-        <div class="title">
-          ${article.title}
-        </div>
+  /*
+  記事を表示
+  */
 
-        <div class="date">
-          ${article.date}
-        </div>
+  container.innerHTML =
+    filteredArticles.map(article => {
 
-        <div class="source">
-          中日スポーツ
-        </div>
-      </a>
-    `;
 
-  }).join("");
+      const isRead =
+        readArticles.includes(article.id);
+
+
+      return `
+
+        <a
+
+          class="article
+          ${isRead ? "read" : "unread"}"
+
+          href="${article.url}"
+
+          target="_blank"
+
+          rel="noopener noreferrer"
+
+          onclick="markAsRead('${article.id}')"
+
+        >
+
+          <div class="article-title">
+
+            ${escapeHtml(article.title)}
+
+            ${
+              !isRead
+              ? '<span class="new">未読</span>'
+              : ''
+            }
+
+          </div>
+
+
+          <div class="article-meta">
+
+            ${escapeHtml(article.date)}
+
+          </div>
+
+
+          <div class="source">
+
+            ${escapeHtml(article.source)}
+
+          </div>
+
+        </a>
+
+      `;
+
+    }).join("");
+
+
+  updateCount();
+
 }
 
+
+
+/*
+========================================
+既読にする
+========================================
+*/
+
 function markAsRead(id) {
+
 
   if (!readArticles.includes(id)) {
 
     readArticles.push(id);
 
+
     localStorage.setItem(
-      "readArticles",
+
+      "dragonsReadArticles",
+
       JSON.stringify(readArticles)
+
     );
+
   }
+
 }
 
-function showArticles(filter) {
+
+
+/*
+========================================
+未読件数
+========================================
+*/
+
+function updateCount() {
+
+
+  const unread =
+    articles.filter(
+
+      article =>
+        !readArticles.includes(article.id)
+
+    ).length;
+
+
+  document.getElementById(
+    "unreadCount"
+  ).textContent = unread;
+
+}
+
+
+
+/*
+========================================
+フィルター
+========================================
+*/
+
+function changeFilter(filter) {
+
 
   currentFilter = filter;
 
-  document.querySelectorAll(".filter")
-    .forEach(button => button.classList.remove("active"));
 
-  event.target.classList.add("active");
+  document
+    .querySelectorAll(".buttons button")
+    .forEach(button => {
+
+      button.classList.remove("active");
+
+    });
+
+
+  if (filter === "all") {
+
+    document
+      .getElementById("allButton")
+      .classList.add("active");
+
+  }
+
+
+  if (filter === "unread") {
+
+    document
+      .getElementById("unreadButton")
+      .classList.add("active");
+
+  }
+
+
+  if (filter === "read") {
+
+    document
+      .getElementById("readButton")
+      .classList.add("active");
+
+  }
+
 
   renderArticles();
+
 }
+
+
+
+/*
+========================================
+更新
+========================================
+*/
+
+function refreshArticles() {
+
+
+  /*
+  今は画面を再読み込みします。
+
+  自動取得機能を追加した後は、
+
+  「中日スポーツから最新記事を取得」
+
+  に変更します。
+  */
+
+
+  location.reload();
+
+}
+
+
+
+/*
+========================================
+HTMLエスケープ
+========================================
+*/
+
+function escapeHtml(text) {
+
+
+  return text
+
+    .replace(/&/g, "&amp;")
+
+    .replace(/</g, "&lt;")
+
+    .replace(/>/g, "&gt;")
+
+    .replace(/"/g, "&quot;")
+
+    .replace(/'/g, "&#039;");
+
+}
+
+
+
+/*
+========================================
+初期表示
+========================================
+*/
 
 renderArticles();
 
+
 </script>
+
 
 </body>
 </html>
